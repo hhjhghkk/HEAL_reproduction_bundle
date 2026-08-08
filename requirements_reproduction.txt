@@ -1,0 +1,6 @@
+huggingface_hub>=0.24
+datasets>=2.20
+pandas>=2.0
+transformers>=4.45
+accelerate>=0.33
+torch>=2.1

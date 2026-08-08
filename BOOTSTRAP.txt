@@ -1,0 +1,5 @@
+1) bash scripts/fetch_all.sh
+2) bash scripts/setup_env.sh
+3) conda activate heal-repro
+4) python scripts/inspect_heal.py
+5) bash scripts/run_eai_goal_interpretation.sh virtualhome generate_prompts
