@@ -1,4 +1,5 @@
 from __future__ import annotations
+import csv
 import json
 from pathlib import Path
 
@@ -14,7 +15,18 @@ print(f"Files: {len(files)}")
 for p in files:
     print(" -", p.relative_to(DATA), p.stat().st_size, "bytes")
 
-# Show a lightweight preview without assuming one fixed upstream serialization format.
+# Report CSV row counts and schemas used by the public HEAL artifact.
+for p in files:
+    if p.suffix.lower() == ".csv":
+        with p.open("r", encoding="utf-8-sig", newline="") as handle:
+            reader = csv.DictReader(handle)
+            rows = list(reader)
+        print(
+            f"CSV {p.relative_to(DATA)}: rows={len(rows)}, "
+            f"columns={reader.fieldnames}"
+        )
+
+# Retain support for a future JSON serialization of the dataset.
 for p in files:
     if p.suffix.lower() == ".json":
         print(f"\nPreview JSON: {p.relative_to(DATA)}")

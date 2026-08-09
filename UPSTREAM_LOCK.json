@@ -1,0 +1,14 @@
+{
+  "eai": {
+    "url": "https://github.com/embodied-agent-interface/embodied-agent-interface.git",
+    "revision": "531c62f8df2cb392bdf1907923c76da41cad4fe6",
+    "package_version": "1.0.5"
+  },
+  "heal": {
+    "url": "https://huggingface.co/datasets/Trishna13/HEAL",
+    "revision": "1887d7f3dbb0e317677821fb39f82eab12a67fd3",
+    "public_modified_prompt_count": 2571,
+    "paper_table_13_modified_prompt_count": 2574
+  }
+}
+

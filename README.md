@@ -1,5 +1,13 @@
 # HEAL 复现包：下载、安装与使用说明
 
+> Windows 用户和实际复现实验请优先阅读
+> [`REPRODUCTION_CN.md`](REPRODUCTION_CN.md)。该文档包含已验证命令、每一步的作用、
+> HEAL 专用评分方式，以及论文与公开数据数量不一致的说明。
+>
+> 如果是第一次阅读代码并准备亲自跑模型，请阅读
+> [`HEAL_CODE_AND_RUN_GUIDE_CN.md`](HEAL_CODE_AND_RUN_GUIDE_CN.md)。其中包含代码结构、
+> 数据流、核心接口、样例走读和逐命令实操说明。
+
 ## 1. 这个包是什么
 
 HEAL（EMNLP 2025 Findings）研究 LLM 驱动具身智能体在 **scene–task inconsistency** 下的幻觉。论文公开的是 **HEAL probing set 数据集**；其基础执行/评测代码来自 **Embodied Agent Interface (EAI)**。

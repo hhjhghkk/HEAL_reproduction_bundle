@@ -1,0 +1,10 @@
+# Local reproduction environment, downloaded upstream projects, and generated outputs.
+workspace/.conda-heal/
+workspace/model_cache/
+workspace/embodied-agent-interface/
+workspace/HEAL_dataset/
+outputs/
+logs/
+tmp/
+__pycache__/
+*.py[cod]
