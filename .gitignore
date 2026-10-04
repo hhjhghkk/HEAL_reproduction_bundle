@@ -8,3 +8,7 @@ logs/
 tmp/
 __pycache__/
 *.py[cod]
+
+# Local model weights and IDE files
+workspace/models/
+.idea/

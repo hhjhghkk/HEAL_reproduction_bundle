@@ -43,6 +43,15 @@ class SceneObject:
     states: frozenset[str]
 
 
+@dataclass(frozen=True, order=True)
+class RelationTriple:
+    """A normalized directed relation ``from --relation--> to``."""
+
+    from_name: str
+    relation: str
+    to_name: str
+
+
 def read_rows(dataset_root: Path, environment: str, variant: str) -> list[dict[str, str]]:
     if environment not in EXPECTED_ROWS:
         raise ValueError(f"Unknown environment: {environment}")
@@ -107,6 +116,93 @@ def parse_scene(prompt: str) -> dict[str, SceneObject]:
     return objects
 
 
+def parse_scene_object_sequence(prompt: str) -> list[str]:
+    """Return scene object names in prompt order, preserving synonym collisions.
+
+    ``parse_scene`` intentionally returns a dictionary for membership checks, so
+    two source objects renamed to the same synonym collapse to one key.  The
+    synonym audit needs the original line order to recover each baseline-to-
+    modified substitution without guessing from unordered set differences.
+    """
+
+    marker = "Relevant objects in the scene are:"
+    if marker not in prompt:
+        return []
+    section = prompt.split(marker, 1)[1]
+    stop_markers = (
+        "All possible relationships",
+        "All initial states in the scene are:",
+        "Symbolic goals format:",
+    )
+    stops = [section.find(item) for item in stop_markers if section.find(item) >= 0]
+    if stops:
+        section = section[: min(stops)]
+
+    vh_pattern = re.compile(
+        r"^\s*([^,\r\n]+),\s*initial states:\s*(\[[^\r\n]*\]),\s*"
+        r"possible states:\s*(\[[^\r\n]*\])\s*$",
+        re.IGNORECASE,
+    )
+    behavior_pattern = re.compile(r"^\s*([^:\r\n]+):\s*(\[[^\r\n]*\])\s*$")
+    names: list[str] = []
+    for line in section.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        match = vh_pattern.match(line) or behavior_pattern.match(line)
+        if match:
+            names.append(normalize_object(match.group(1)))
+    return names
+
+
+def parse_relation_constraints(prompt: str) -> dict[str, frozenset[str]]:
+    """Parse each relation's allowed ``to_name`` object types from a prompt.
+
+    HEAL prompts provide a relation ontology separately from the actual scene.
+    These constraints cannot prove that a goal relation is required, but they
+    can deterministically reject invalid relation names and impossible target
+    object types.
+    """
+
+    marker = "Here is a dictionary where keys are 'relation'"
+    marker_index = prompt.find(marker)
+    if marker_index < 0:
+        return {}
+    start = prompt.find("{", marker_index)
+    if start < 0:
+        return {}
+    literal = _balanced_braced_literal(prompt, start)
+    if literal is None:
+        return {}
+    try:
+        parsed = ast.literal_eval(literal)
+    except (SyntaxError, ValueError):
+        return {}
+    if not isinstance(parsed, dict):
+        return {}
+
+    constraints: dict[str, frozenset[str]] = {}
+    for relation, targets in parsed.items():
+        if not isinstance(targets, (list, tuple, set, frozenset)):
+            continue
+        constraints[normalize_relation(relation)] = frozenset(
+            normalize_object(target) for target in targets if normalize_object(target)
+        )
+    return constraints
+
+
+def _balanced_braced_literal(text: str, start: int) -> str | None:
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
+
+
 def _literal_string_set(value: str) -> set[str]:
     try:
         parsed = ast.literal_eval(value)
@@ -121,6 +217,13 @@ def normalize_object(value: object) -> str:
 
 def normalize_state(value: object) -> str:
     return str(value).strip().upper()
+
+
+def normalize_relation(value: object) -> str:
+    """Normalize relation spelling shared by HEAL prompts and EAI goals."""
+
+    relation = str(value).strip().upper().replace(" ", "_")
+    return {"ONTOP": "ON"}.get(relation, relation)
 
 
 def parse_response(text: str) -> dict | None:
@@ -188,6 +291,65 @@ def response_entities(payload: dict, environment: str) -> tuple[list[str], list[
     else:
         raise ValueError(f"Unknown environment: {environment}")
     return objects, object_states
+
+
+def response_relations(payload: dict, environment: str) -> tuple[list[RelationTriple], int]:
+    """Extract normalized relation triples and count malformed edge-goal entries.
+
+    VirtualHome uses dictionaries such as ``{"from_name": "cup",
+    "relation": "INSIDE", "to_name": "fridge"}``.  BEHAVIOR uses list
+    predicates such as ``["inside", "cup.n.01_1", "fridge.n.01_1"]``.
+    Empty placeholders are ignored, matching the upstream EAI evaluator.
+    """
+
+    edge_goals = payload.get("edge goals", [])
+    if not isinstance(edge_goals, list):
+        return [], 1
+
+    relations: list[RelationTriple] = []
+    malformed = 0
+    for goal in edge_goals:
+        if goal in ({}, [], None, ""):
+            continue
+        if environment == "virtualhome":
+            if not isinstance(goal, dict) or not {
+                "from_name",
+                "relation",
+                "to_name",
+            }.issubset(goal):
+                malformed += 1
+                continue
+            triple = RelationTriple(
+                normalize_object(goal["from_name"]),
+                normalize_relation(goal["relation"]),
+                normalize_object(goal["to_name"]),
+            )
+        elif environment == "behavior":
+            negated = (
+                isinstance(goal, list)
+                and len(goal) == 2
+                and str(goal[0]).strip().lower() == "not"
+            )
+            flat = _strip_not(goal)
+            if not isinstance(flat, list) or len(flat) < 3:
+                malformed += 1
+                continue
+            relation = normalize_relation(flat[0])
+            if negated:
+                relation = f"NOT_{relation}"
+            triple = RelationTriple(
+                normalize_object(flat[1]),
+                relation,
+                normalize_object(flat[2]),
+            )
+        else:
+            raise ValueError(f"Unknown environment: {environment}")
+
+        if not triple.from_name or not triple.relation or not triple.to_name:
+            malformed += 1
+            continue
+        relations.append(triple)
+    return unique_in_order(relations), malformed
 
 
 def _strip_not(value: object) -> object:

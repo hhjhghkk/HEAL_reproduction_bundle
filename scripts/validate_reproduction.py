@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from heal_repro.data import EXPECTED_ROWS, VARIANT_FILES, parse_scene, prompt_from_row, read_rows
+from heal_repro.metrics import load_virtualhome_relation_ground_truth
 
 
 DEFAULT_DATA = ROOT / "workspace" / "HEAL_dataset"
@@ -30,6 +31,11 @@ def git_revision(path: Path) -> str | None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Validate downloaded HEAL/EAI artifacts.")
     parser.add_argument("--data-root", type=Path, default=DEFAULT_DATA)
+    parser.add_argument(
+        "--eai-root",
+        type=Path,
+        default=ROOT / "workspace" / "embodied-agent-interface",
+    )
     parser.add_argument("--json", action="store_true", help="Print machine-readable output.")
     args = parser.parse_args()
 
@@ -66,6 +72,26 @@ def main() -> None:
             if parsed_scenes != actual:
                 errors.append(f"{environment}/{variant}: only {parsed_scenes}/{actual} scenes parsed")
     report["modified_prompt_total"] = modified_total
+
+    relation_ground_truth = load_virtualhome_relation_ground_truth(args.eai_root)
+    virtualhome_task_ids = {
+        row.get("task_id", "")
+        for row in read_rows(args.data_root, "virtualhome", "baseline")
+    }
+    missing_relation_ground_truth = sorted(
+        virtualhome_task_ids - set(relation_ground_truth)
+    )
+    report["virtualhome_relation_ground_truth"] = {
+        "eai_task_ids": len(relation_ground_truth),
+        "heal_task_ids": len(virtualhome_task_ids),
+        "edge_goals": sum(len(relations) for relations in relation_ground_truth.values()),
+        "missing_heal_task_ids": missing_relation_ground_truth,
+    }
+    if missing_relation_ground_truth:
+        errors.append(
+            "VirtualHome relation ground truth missing task_ids: "
+            + ", ".join(missing_relation_ground_truth)
+        )
     report["errors"] = errors
 
     if args.json:
@@ -81,6 +107,14 @@ def main() -> None:
                     f"parsed={values['scenes_parsed']:4d}"
                 )
         print(f"\nModified prompts in public artifact: {modified_total}")
+        relation_report = report["virtualhome_relation_ground_truth"]
+        print(
+            "VirtualHome relation ground truth: "
+            f"EAI tasks={relation_report['eai_task_ids']} "
+            f"HEAL tasks={relation_report['heal_task_ids']} "
+            f"edge goals={relation_report['edge_goals']} "
+            f"missing={len(relation_report['missing_heal_task_ids'])}"
+        )
         print(f"Note: {report['paper_public_data_discrepancy']}")
         print("Validation:", "PASS" if not errors else "FAIL")
         for error in errors:
